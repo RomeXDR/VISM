@@ -36,8 +36,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Publish self-contained build
-        run: dotnet publish VISaveManager.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o dist/publish
+      - name: Install the Native AOT toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      # Linux: Native AOT. Windows: single-file, self-contained, ReadyToRun (set in the .csproj).
+      - name: Publish release build
+        run: dotnet publish VISaveManager.csproj -c Release -r ${{ matrix.rid }} -o dist/publish
 
       - name: Verify published files
         shell: pwsh
