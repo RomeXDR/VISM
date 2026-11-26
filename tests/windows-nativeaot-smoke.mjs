@@ -22,12 +22,16 @@ async function waitFor(action, description) {
 }
 
 try {
+    let lastTargets;
     const url = await waitFor(async () => {
         const response = await fetch('http://127.0.0.1:9315/json/list', {
             signal: AbortSignal.timeout(1000),
         }).catch(() => null);
         if (!response?.ok) return null;
         const pages = await response.json();
+        const targets = pages.map(page => page.url).join(', ');
+        if (targets !== lastTargets) console.log('WebView2 targets:', targets);
+        lastTargets = targets;
         return pages.find(page => page.url.startsWith('file:') && page.url.endsWith('/ui/index.html'))?.webSocketDebuggerUrl;
     }, 'the bundled WebView2 page');
 

@@ -62,11 +62,6 @@ jobs:
             }
           }
 
-      - name: Test Windows WebView2 save load
-        if: runner.os == 'Windows'
-        timeout-minutes: 3
-        run: node tests/windows-nativeaot-smoke.mjs dist/publish
-
       - name: Package Linux build
         if: runner.os == 'Linux'
         run: |
@@ -86,3 +81,28 @@ jobs:
           name: VISaveManager-${{ matrix.rid }}
           path: dist/VISaveManager-${{ matrix.rid }}.${{ matrix.extension }}
           if-no-files-found: error
+
+      - name: Check the Windows WebView2 Runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $clientId = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $keys = @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$clientId",
+                    "HKCU:\Software\Microsoft\EdgeUpdate\Clients\$clientId")
+          $versions = @(Get-ItemPropertyValue -Path $keys -Name pv -ErrorAction SilentlyContinue)
+          if (!$versions.Where({ $_ -as [version] -gt [version]'0.0.0.0' })) {
+            $installer = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $installer
+            if ((Get-AuthenticodeSignature $installer).Status -ne 'Valid') {
+              throw 'WebView2 bootstrapper signature validation failed'
+            }
+            $installation = Start-Process -FilePath $installer -ArgumentList '/silent', '/install' -Wait -PassThru
+            if ($installation.ExitCode) { throw "WebView2 bootstrapper returned $($installation.ExitCode)" }
+            $versions = @(Get-ItemPropertyValue -Path $keys -Name pv -ErrorAction SilentlyContinue)
+          }
+          Write-Host "WebView2 runtime versions: $versions"
+
+      - name: Test Windows WebView2 save load
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: node tests/windows-nativeaot-smoke.mjs dist/publish

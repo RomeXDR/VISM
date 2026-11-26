@@ -30,6 +30,7 @@ sealed class NativeWindowsHost : Form, IDesktopHost
 
         view.EnvironmentRequested += (_, e) =>
         {
+            e.EnableDevTools = test;
             if (e is WindowsWebView2EnvironmentRequestedEventArgs webView)
                 webView.UserDataFolder = controller.ProfileDirectory;
         };
@@ -59,7 +60,8 @@ sealed class NativeWindowsHost : Form, IDesktopHost
         }
         catch (Exception error)
         {
-            MessageBoxW(IntPtr.Zero, error.Message, "VI Save Manager", 0x10);
+            Console.Error.WriteLine(error);
+            if (!test) MessageBoxW(IntPtr.Zero, error.Message, "VI Save Manager", 0x10);
             return 1;
         }
     }
