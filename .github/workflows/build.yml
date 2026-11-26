@@ -36,21 +36,29 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Install the Native AOT toolchain
+      - name: Install NativeAOT build dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
 
-      # Linux: Native AOT. Windows: single-file, self-contained, ReadyToRun (set in the .csproj).
-      - name: Publish release build
-        run: dotnet publish VISaveManager.csproj -c Release -r ${{ matrix.rid }} -o dist/publish
+      - name: Publish NativeAOT build
+        run: dotnet publish VISaveManager.csproj -c Release -r ${{ matrix.rid }} -p:PublishAot=true -p:TreatWarningsAsErrors=true -o dist/publish
 
       - name: Verify published files
         shell: pwsh
         run: |
           $required = @('${{ matrix.executable }}', 'ui/index.html', 'ui/app.js', 'team-saves/Start/about.txt')
+          if ($IsWindows) {
+            $required += @('libSkiaSharp.dll', 'libHarfBuzzSharp.dll')
+          }
           foreach ($path in $required) {
             if (!(Test-Path -LiteralPath "dist/publish/$path" -PathType Leaf)) {
               throw "Missing published file $path"
+            }
+          }
+
+          foreach ($managedRuntimeFile in @('VISaveManager.dll', 'coreclr.dll', 'libcoreclr.so', 'clrjit.dll', 'libclrjit.so')) {
+            if (Test-Path -LiteralPath "dist/publish/$managedRuntimeFile") {
+              throw "Unexpected managed build file $managedRuntimeFile"
             }
           }
 
@@ -59,15 +67,42 @@ jobs:
         run: |
           test -x dist/publish/VISaveManager
           dist/publish/VISaveManager --help
-          tar -czf dist/VISaveManager-linux-x64.tar.gz -C dist/publish .
+          tar --exclude='./VISaveManager.dbg' -czf dist/VISaveManager-linux-x64.tar.gz -C dist/publish .
 
       - name: Package Windows build
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path 'dist/publish/*' -DestinationPath 'dist/VISaveManager-win-x64.zip'
+        run: |
+          $files = Get-ChildItem -LiteralPath dist/publish | Where-Object Extension -ne '.pdb'
+          Compress-Archive -LiteralPath $files.FullName -DestinationPath 'dist/VISaveManager-win-x64.zip'
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: VISaveManager-${{ matrix.rid }}
           path: dist/VISaveManager-${{ matrix.rid }}.${{ matrix.extension }}
           if-no-files-found: error
+
+      - name: Check the Windows WebView2 Runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $clientId = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $keys = @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$clientId",
+                    "HKCU:\Software\Microsoft\EdgeUpdate\Clients\$clientId")
+          $versions = @(Get-ItemPropertyValue -Path $keys -Name pv -ErrorAction SilentlyContinue)
+          if (!$versions.Where({ $_ -as [version] -gt [version]'0.0.0.0' })) {
+            $installer = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $installer
+            if ((Get-AuthenticodeSignature $installer).Status -ne 'Valid') {
+              throw 'WebView2 bootstrapper signature validation failed'
+            }
+            $installation = Start-Process -FilePath $installer -ArgumentList '/silent', '/install' -Wait -PassThru
+            if ($installation.ExitCode) { throw "WebView2 bootstrapper returned $($installation.ExitCode)" }
+            $versions = @(Get-ItemPropertyValue -Path $keys -Name pv -ErrorAction SilentlyContinue)
+          }
+          Write-Host "WebView2 runtime versions: $versions"
+
+      - name: Test Windows WebView2 save load
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: node tests/windows-nativeaot-smoke.mjs dist/publish

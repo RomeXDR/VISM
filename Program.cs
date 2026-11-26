@@ -15,7 +15,9 @@ static class Program
     static int Main(string[] args)
     {
         bool test = args.Contains("--test", StringComparer.OrdinalIgnoreCase);
-#if WINDOWS
+#if VISM_NATIVE_WINDOWS
+        return NativeWindowsHost.Start(test);
+#elif WINDOWS
         ApplicationConfiguration.Initialize();
         Application.Run(new WindowsHost(test));
         return 0;

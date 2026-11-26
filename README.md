@@ -24,7 +24,7 @@ sudo dnf install gtk3 webkit2gtk4.1     # Nobara / Fedora
 sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0  # Debian / Ubuntu
 ```
 
-Build with the .NET 8 SDK or newer, then launch from the output directory. The default build uses the installed .NET runtime. For a shareable archive, use `./build.sh --release`: it compiles with **Native AOT** into one native `VISaveManager` executable that needs no .NET install (needs `clang` and the zlib headers: `sudo dnf install clang zlib-devel` or `sudo apt install clang zlib1g-dev`). Extract that archive into its own folder and run `./VISaveManager`.
+Build with the .NET 8 SDK or newer, then launch from the output directory. The default build uses the installed .NET runtime. For a NativeAOT archive, install the .NET 10 SDK, Clang, and the zlib development headers (`clang zlib-devel` on Fedora or `clang zlib1g-dev` on Ubuntu), then run `./build.sh --release`. Extract the archive into its own folder and run `./VISaveManager`.
 
 ```sh
 ./build.sh
@@ -39,7 +39,9 @@ Kept saves and backups are in `~/.local/share/VISaveManager/saves` (or under `$X
 
 ## Windows
 
-Download the Windows zip from **Releases**, extract it, and run `VISaveManager.exe`. The game folder is `%LOCALAPPDATA%\victory\data\7952987A\saves`. Kept saves and backups are in `%LOCALAPPDATA%\VISaveManager\saves`.
+Download the Windows zip from **Releases**, extract it, and run `VISaveManager.exe`. Windows 10 or later and the Microsoft Edge WebView2 Runtime are required. The game folder is `%LOCALAPPDATA%\victory\data\7952987A\saves`. Kept saves and backups are in `%LOCALAPPDATA%\VISaveManager\saves`.
+
+To build a Windows NativeAOT ZIP from source, install the .NET 10 SDK and Visual Studio Build Tools with **Desktop development with C++**. Run `release.ps1` on Windows x64. The NativeAOT build uses the Majorsilence.Forms compatibility layer with its Avalonia backend and ships the Windows x64 SkiaSharp and HarfBuzzSharp libraries alongside the EXE.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1     # build and add shortcuts
@@ -48,11 +50,11 @@ powershell -ExecutionPolicy Bypass -File release.ps1   # make the zip to share
 
 ## Choosing the build target
 
-`dotnet build -c Release` defaults to the host OS. You can also target Linux or Windows explicitly with the same checkout. Cross publishing requires the matching SDK/runtime packs, which `dotnet publish` restores from NuGet:
+`dotnet build -c Release` defaults to the host OS. You can cross-publish a self-contained build from the same checkout. NativeAOT releases use a native build host for each operating system. Self-contained cross publishing requires the matching SDK/runtime packs, which `dotnet publish` restores from NuGet:
 
 ```sh
-dotnet publish VISaveManager.csproj -c Release -r linux-x64 -o dist/linux-x64     # Native AOT
-dotnet publish VISaveManager.csproj -c Release -r win-x64 -o dist/win-x64         # single-file, self-contained, ReadyToRun
+dotnet publish VISaveManager.csproj -c Release -r linux-x64 --self-contained true -p:PublishAot=false -o dist/linux-x64-self-contained
+dotnet publish VISaveManager.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=false -o dist/win-x64-self-contained
 ```
 
 ## Automated builds
@@ -62,9 +64,4 @@ The **Build VISM** workflow compiles both platforms on pull requests into `main`
 - `VISaveManager-linux-x64` contains `VISaveManager-linux-x64.tar.gz`. Extract it to a folder and run `./VISaveManager`. GTK3 and WebKitGTK are required.
 - `VISaveManager-win-x64` contains `VISaveManager-win-x64.zip`. Extract it to a folder and run `VISaveManager.exe`. The WebView2 Runtime is required.
 
-Both archives include .NET, the application interface, and the bundled team saves.
-
-Release builds: Linux is compiled with Native AOT (one native executable, no .NET needed). Windows
-can't use Native AOT because WinForms and WebView2 don't support it, so it ships as one
-self-contained, ReadyToRun-compiled `VISaveManager.exe` instead (no .NET needed either). Both keep
-the `ui` and `team-saves` folders next to the executable.
+Both archives contain a NativeAOT executable, the application interface, and the bundled team saves. An installed .NET runtime is unnecessary.

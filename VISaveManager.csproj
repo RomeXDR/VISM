@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework Condition="$(RuntimeIdentifier.StartsWith('win-')) or ('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows')))">net8.0-windows</TargetFramework>
+    <VismWindows Condition="$(RuntimeIdentifier.StartsWith('win-')) or ('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows')))">true</VismWindows>
+    <PublishAot Condition="'$(PublishAot)' == '' and '$(Configuration)' == 'Release' and
+      (('$(RuntimeIdentifier)' == 'win-x64' and $([MSBuild]::IsOSPlatform('Windows'))) or
+       ($(RuntimeIdentifier.StartsWith('linux-')) and $([MSBuild]::IsOSPlatform('Linux'))))">true</PublishAot>
+    <TargetFramework Condition="'$(PublishAot)' == 'true'">net10.0</TargetFramework>
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(VismWindows)' == 'true'">net8.0-windows</TargetFramework>
     <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
@@ -18,25 +23,29 @@
     <ApplicationIcon>vism.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
-  <!-- Release packages (dotnet publish -c Release -r <rid>):
-       Linux: Native AOT, one native executable, no .NET needed.
-       Windows: WinForms and WebView2 can't do Native AOT, so one self-contained,
-       ReadyToRun-compiled executable instead. The ui and team-saves folders sit beside it. -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' != '' and '$(TargetFramework)' == 'net8.0'">
-    <PublishAot>true</PublishAot>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <StripSymbols>true</StripSymbols>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' != '' and '$(TargetFramework)' == 'net8.0-windows'">
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
-    <PublishReadyToRun>true</PublishReadyToRun>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-  </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <Compile Remove="LinuxHost.cs" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
+    <DefineConstants>$(DefineConstants);VISM_NATIVE_WINDOWS</DefineConstants>
+    <OutputType>WinExe</OutputType>
+    <ApplicationIcon>vism.ico</ApplicationIcon>
+    <ApplicationManifest>vism.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
+    <Compile Remove="LinuxHost.cs" />
+    <PackageReference Include="Majorsilence.Forms.Avalonia" Version="26.11.19" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" GeneratePathProperty="true" />
+    <PackageReference Include="SkiaSharp.HarfBuzz" Version="3.119.4" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.5" GeneratePathProperty="true" />
+    <None Include="$(PkgSkiaSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgSkiaSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt"
+          Link="THIRD-PARTY/SkiaSharp-%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgHarfBuzzSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgHarfBuzzSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt"
+          Link="THIRD-PARTY/HarfBuzzSharp-%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(VismWindows)' != 'true' or '$(PublishAot)' != 'true'">
+    <Compile Remove="NativeWindowsHost.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-windows'">
     <Compile Remove="WindowsHost.cs" />

@@ -2,7 +2,8 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const send = (m) => {
-  if (window.chrome?.webview) window.chrome.webview.postMessage(m);
+  if (typeof window.invokeCSharpAction === 'function') window.invokeCSharpAction(JSON.stringify(m));
+  else if (window.chrome?.webview) window.chrome.webview.postMessage(m);
   else window.webkit.messageHandlers.vism.postMessage(JSON.stringify(m));
 };
 const fmtSize = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
