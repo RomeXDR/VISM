@@ -28,6 +28,7 @@
     <Compile Remove="LinuxHost.cs" />
   </ItemGroup>
   <PropertyGroup Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
+    <VismWindowsBundle>true</VismWindowsBundle>
     <DefineConstants>$(DefineConstants);VISM_NATIVE_WINDOWS</DefineConstants>
     <OutputType>WinExe</OutputType>
     <ApplicationIcon>vism.ico</ApplicationIcon>
@@ -36,21 +37,49 @@
   <ItemGroup Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
     <Compile Remove="LinuxHost.cs" />
     <PackageReference Include="Majorsilence.Forms.Avalonia" Version="26.11.19" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" GeneratePathProperty="true" />
+    <PackageReference Include="Avalonia.Angle.Windows.Natives" Version="2.1.27548.20260419" GeneratePathProperty="true" ExcludeAssets="native" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" GeneratePathProperty="true" ExcludeAssets="native" />
     <PackageReference Include="SkiaSharp.HarfBuzz" Version="3.119.4" />
-    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.5" GeneratePathProperty="true" />
-    <None Include="$(PkgSkiaSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgSkiaSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt"
-          Link="THIRD-PARTY/SkiaSharp-%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
-    <None Include="$(PkgHarfBuzzSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgHarfBuzzSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt"
-          Link="THIRD-PARTY/HarfBuzzSharp-%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.5" GeneratePathProperty="true" ExcludeAssets="native" />
   </ItemGroup>
   <ItemGroup Condition="'$(VismWindows)' != 'true' or '$(PublishAot)' != 'true'">
-    <Compile Remove="NativeWindowsHost.cs" />
+    <Compile Remove="NativeWindowsHost.cs;WindowsBundle.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-windows'">
     <Compile Remove="WindowsHost.cs" />
   </ItemGroup>
-  <ItemGroup>
+  <ItemGroup Condition="'$(VismWindowsBundle)' != 'true'">
     <None Update="vism.ico;ui/**/*;team-saves/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="BuildVismWindowsBundle" BeforeTargets="AssignTargetPaths"
+          Condition="'$(VismWindowsBundle)' == 'true'">
+    <Error Condition="'$(RuntimeIdentifier)' != 'win-x64'" Text="The VISM Windows NativeAOT bundle requires win-x64." />
+    <PropertyGroup>
+      <BundleStaging>$(IntermediateOutputPath)windows-bundle/</BundleStaging>
+      <BundleArchive>$(IntermediateOutputPath)windows-bundle.zip</BundleArchive>
+    </PropertyGroup>
+    <ItemGroup>
+      <VismUiFile Include="ui/**/*" />
+      <VismTeamSave Include="team-saves/**/*" />
+      <VismNativeDll Include="$(PkgSkiaSharp_NativeAssets_Win32)/runtimes/win-x64/native/libSkiaSharp.dll;
+                             $(PkgHarfBuzzSharp_NativeAssets_Win32)/runtimes/win-x64/native/libHarfBuzzSharp.dll;
+                             $(PkgAvalonia_Angle_Windows_Natives)/runtimes/win-x64/native/av_libglesv2.dll" />
+      <VismNotice Include="notices/windows/*.txt" />
+      <VismSkiaNotice Include="$(PkgSkiaSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgSkiaSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt" />
+      <VismHarfBuzzNotice Include="$(PkgHarfBuzzSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgHarfBuzzSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt" />
+      <EmbeddedResource Include="$(BundleArchive)" LogicalName="VISM.WindowsBundle.zip" />
+    </ItemGroup>
+    <RemoveDir Directories="$(BundleStaging)" />
+    <Copy SourceFiles="@(VismUiFile)" DestinationFiles="@(VismUiFile->'$(BundleStaging)ui/%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(VismTeamSave)" DestinationFiles="@(VismTeamSave->'$(BundleStaging)team-saves/%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(VismNativeDll)" DestinationFolder="$(BundleStaging)" />
+    <Copy SourceFiles="@(VismNotice)" DestinationFolder="$(BundleStaging)THIRD-PARTY" />
+    <Copy SourceFiles="$(PkgAvalonia_Angle_Windows_Natives)/LICENSE"
+          DestinationFiles="$(BundleStaging)THIRD-PARTY/ANGLE-LICENSE.txt" />
+    <Copy SourceFiles="@(VismSkiaNotice)" DestinationFiles="@(VismSkiaNotice->'$(BundleStaging)THIRD-PARTY/SkiaSharp-%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(VismHarfBuzzNotice)" DestinationFiles="@(VismHarfBuzzNotice->'$(BundleStaging)THIRD-PARTY/HarfBuzzSharp-%(Filename)%(Extension)')" />
+    <Copy SourceFiles="$(NetCoreRoot)LICENSE.txt;$(NetCoreRoot)ThirdPartyNotices.txt;$(PkgMicrosoft_DotNet_ILCompiler)/THIRD-PARTY-NOTICES.TXT"
+          DestinationFiles="$(BundleStaging)THIRD-PARTY/dotnet-LICENSE.txt;$(BundleStaging)THIRD-PARTY/dotnet-THIRD-PARTY-NOTICES.txt;$(BundleStaging)THIRD-PARTY/ILCompiler-THIRD-PARTY-NOTICES.txt" />
+    <ZipDirectory SourceDirectory="$(BundleStaging)" DestinationFile="$(BundleArchive)" Overwrite="true" />
+  </Target>
 </Project>

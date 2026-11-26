@@ -46,9 +46,12 @@ jobs:
       - name: Verify published files
         shell: pwsh
         run: |
-          $required = @('${{ matrix.executable }}', 'ui/index.html', 'ui/app.js', 'team-saves/Start/about.txt')
-          if ($IsWindows) {
-            $required += @('libSkiaSharp.dll', 'libHarfBuzzSharp.dll')
+          $required = @('${{ matrix.executable }}')
+          if ($IsLinux) {
+            $required += @('ui/index.html', 'ui/app.js', 'team-saves/Start/about.txt')
+          } else {
+            $extra = @(Get-ChildItem -LiteralPath dist/publish | Where-Object { $_.Name -notin @('VISaveManager.exe', 'VISaveManager.pdb') })
+            if ($extra.Count) { throw "Windows publish contains unexpected sidecar files: $($extra.Name -join ', ')" }
           }
           foreach ($path in $required) {
             if (!(Test-Path -LiteralPath "dist/publish/$path" -PathType Leaf)) {
@@ -72,9 +75,7 @@ jobs:
       - name: Package Windows build
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          $files = Get-ChildItem -LiteralPath dist/publish | Where-Object Extension -ne '.pdb'
-          Compress-Archive -LiteralPath $files.FullName -DestinationPath 'dist/VISaveManager-win-x64.zip'
+        run: Compress-Archive -LiteralPath 'dist/publish/VISaveManager.exe' -DestinationPath 'dist/VISaveManager-win-x64.zip'
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
@@ -105,4 +106,6 @@ jobs:
       - name: Test Windows WebView2 save load
         if: runner.os == 'Windows'
         timeout-minutes: 3
-        run: node tests/windows-nativeaot-smoke.mjs dist/publish
+        run: |
+          Expand-Archive -LiteralPath dist/VISaveManager-win-x64.zip -DestinationPath dist/windows-smoke
+          node tests/windows-nativeaot-smoke.mjs dist/windows-smoke

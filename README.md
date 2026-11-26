@@ -41,7 +41,7 @@ Kept saves and backups are in `~/.local/share/VISaveManager/saves` (or under `$X
 
 Download the Windows zip from **Releases**, extract it, and run `VISaveManager.exe`. Windows 10 or later and the Microsoft Edge WebView2 Runtime are required. The game folder is `%LOCALAPPDATA%\victory\data\7952987A\saves`. Kept saves and backups are in `%LOCALAPPDATA%\VISaveManager\saves`.
 
-To build a Windows NativeAOT ZIP from source, install the .NET 10 SDK and Visual Studio Build Tools with **Desktop development with C++**. Run `release.ps1` on Windows x64. The NativeAOT build uses the Majorsilence.Forms compatibility layer with its Avalonia backend and ships the Windows x64 SkiaSharp and HarfBuzzSharp libraries alongside the EXE.
+To build a Windows NativeAOT ZIP from source, install the .NET 10 SDK and Visual Studio Build Tools with **Desktop development with C++**. Run `release.ps1` on Windows x64. The NativeAOT build uses the Majorsilence.Forms compatibility layer with its Avalonia backend. The ZIP contains only `VISaveManager.exe`. On first launch it unpacks the embedded UI, team saves, native libraries, and third-party notices into a versioned cache under `%LOCALAPPDATA%\VISaveManager\runtime`. The EXE can run from any folder.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1     # build and add shortcuts
@@ -64,4 +64,4 @@ The **Build VISM** workflow compiles both platforms on pull requests into `main`
 - `VISaveManager-linux-x64` contains `VISaveManager-linux-x64.tar.gz`. Extract it to a folder and run `./VISaveManager`. GTK3 and WebKitGTK are required.
 - `VISaveManager-win-x64` contains `VISaveManager-win-x64.zip`. Extract it to a folder and run `VISaveManager.exe`. The WebView2 Runtime is required.
 
-Both archives contain a NativeAOT executable, the application interface, and the bundled team saves. An installed .NET runtime is unnecessary.
+Both archives include the application interface and team saves. Neither requires a .NET installation.

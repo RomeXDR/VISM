@@ -12,15 +12,16 @@ namespace VISM;
 // WebView2 owns the content surface inside the form.
 sealed class NativeWindowsHost : Form, IDesktopHost
 {
-    readonly Uri page = new(Path.Combine(AppContext.BaseDirectory, "ui", "index.html"));
+    readonly Uri page;
     readonly NativeWebView view = new();
     readonly SaveManager controller;
     bool closing;
     bool handlingMessage;
 
-    NativeWindowsHost(bool test)
+    NativeWindowsHost(bool test, string assetsDirectory)
     {
-        controller = new SaveManager(this, test, null);
+        page = new Uri(Path.Combine(assetsDirectory, "ui", "index.html"));
+        controller = new SaveManager(this, test, null, assetsDirectory);
         Directory.CreateDirectory(controller.ProfileDirectory);
 
         Text = test ? "VI Save Manager (test profile)" : "VI Save Manager";
@@ -65,11 +66,12 @@ sealed class NativeWindowsHost : Form, IDesktopHost
         try
         {
             if (test) Console.Error.WriteLine("Starting the compatibility host");
+            string assetsDirectory = WindowsBundle.Unpack(new SaveLocations(test, null).ProfileDirectory);
             Platform.Backend = new AvaloniaPlatformBackend();
             Platform.Backend.Initialize();
             if (!WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WebView2).IsSupported)
                 throw new InvalidOperationException("Install the Microsoft Edge WebView2 Runtime to start VI Save Manager.");
-            using var host = new NativeWindowsHost(test);
+            using var host = new NativeWindowsHost(test, assetsDirectory);
             Majorsilence.Forms.Application.Run(host);
             return 0;
         }

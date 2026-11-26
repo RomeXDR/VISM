@@ -3,9 +3,12 @@ import { execFileSync, spawn } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 
 const publish = resolve(process.argv[2]);
+assert.deepEqual(await readdir(publish), ['VISaveManager.exe'], 'The Windows archive must contain only the EXE');
 const app = spawn(join(publish, 'VISaveManager.exe'), ['--test'], {
+    cwd: publish,
     stdio: 'inherit',
     env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9315' },
 });
@@ -72,7 +75,7 @@ try {
     await evaluate(`${loadButton}.click(); ${loadButton}.click();`);
     await waitFor(() => evaluate(`document.querySelector('#svNow').textContent.includes('Current game save')`), 'the loaded test save');
 
-    const fixture = join(publish, 'team-saves', 'Boat');
+    const fixture = fileURLToPath(new URL('../team-saves/Boat/', import.meta.url));
     const destination = join(process.env.LOCALAPPDATA, 'VISaveManager-test', 'victory-data', '7952987A', 'saves');
     const files = (await readdir(fixture, { recursive: true, withFileTypes: true }))
         .filter(entry => entry.isFile() && entry.name !== 'about.txt');
