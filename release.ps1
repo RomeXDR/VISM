@@ -10,7 +10,6 @@ dotnet publish -c Release -r win-x64 -p:PublishAot=true -o $out
 if ($LASTEXITCODE -ne 0) { throw "Build failed (exit code $LASTEXITCODE)" }
 $zip = Join-Path $PSScriptRoot "dist\VISaveManager-$version.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
-$files = Get-ChildItem -LiteralPath $out | Where-Object Extension -ne '.pdb'
-Compress-Archive -LiteralPath $files.FullName -DestinationPath $zip
+Compress-Archive -LiteralPath (Join-Path $out 'VISaveManager.exe') -DestinationPath $zip
 Write-Host "Zip to share: $zip" -ForegroundColor Green
 explorer.exe "/select,`"$zip`""

@@ -63,14 +63,14 @@ interface IDesktopHost
     void RevealExport(string path);
 }
 
-sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory)
+sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory, string? assetsDirectory = null)
 {
     const string TitleId = SaveLocations.TitleId;
     readonly SaveLocations locations = new(test, saveDirectory);
     public string ProfileDirectory => locations.ProfileDirectory;
     string SnapsRoot => Path.Combine(ProfileDirectory, "saves");
     string SkippedVersionFile => Path.Combine(ProfileDirectory, "skipped-version.txt");
-    static string TeamRoot => Path.Combine(AppContext.BaseDirectory, "team-saves");
+    string TeamRoot => Path.Combine(assetsDirectory ?? AppContext.BaseDirectory, "team-saves");
 
     // ---- updates: the only thing this app asks the internet. One anonymous request to GitHub's
     //      public API for the newest release of this repo; nothing about the user is sent. ----
