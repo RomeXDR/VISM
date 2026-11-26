@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; font-src 'self' file:; base-uri 'none'; form-action 'none'">
 <title>VI Save Manager</title>
 <link rel="stylesheet" href="base.css?v=1">
 <link rel="stylesheet" href="app.css?v=2">
@@ -23,7 +24,8 @@
   </header>
 
   <section class="mega">
-    <div class="eyebrow">Your game</div>
+    <div class="race-head"><div class="eyebrow">Your game</div><button class="ghost small" id="chooseSaveFolder" hidden>Choose save folder…</button></div>
+    <p class="sv-empty save-path" id="savePath" hidden></p>
     <div class="sv-now" id="svNow"><div class="skeleton"></div></div>
     <form class="sv-add" id="svForm">
       <input id="svName" placeholder="Name this spot, e.g. boat" maxlength="60" autocomplete="off" spellcheck="false">

@@ -1,24 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <TargetFramework Condition="'$(VismWindowsBuild)' == 'true' or $([MSBuild]::IsOSPlatform('Windows'))">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>VISaveManager</AssemblyName>
     <RootNamespace>VISM</RootNamespace>
-    <ApplicationIcon>vism.ico</ApplicationIcon>
-    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Product>VI Save Manager</Product>
     <Version>1.0.0</Version>
     <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
-  <ItemGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>vism.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <Compile Remove="LinuxHost.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-windows'">
+    <Compile Remove="WindowsHost.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="vism.ico" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="ui\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="team-saves\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="vism.ico;ui/**/*;team-saves/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

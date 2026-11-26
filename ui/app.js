@@ -1,13 +1,20 @@
 // VI Save Manager page. Talks to the host (Program.cs) with web messages.
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const send = (m) => window.chrome.webview.postMessage(m);
+const send = (m) => {
+  if (window.chrome?.webview) window.chrome.webview.postMessage(m);
+  else window.webkit.messageHandlers.vism.postMessage(JSON.stringify(m));
+};
 const fmtSize = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 let last = null;
 
 function render(m) {
   last = m;
   $('#testTag').hidden = !m.test;
+  $('#chooseSaveFolder').hidden = !m.canChooseSaveFolder;
+  const savePath = $('#savePath');
+  savePath.hidden = !m.canChooseSaveFolder;
+  savePath.textContent = m.saveDirectory || 'Select the game’s saves folder to load a save.';
   $('#svNow').innerHTML = m.found
     ? `<div class="sv-row"><div><b>Current game save</b><span>Last written ${esc(m.newest)} · ${fmtSize(m.size)}</span></div>
         ${m.running ? '<span class="sv-run">game running: loading is off until you close it</span>' : ''}
@@ -44,6 +51,7 @@ function armed(btn, label) {
 document.addEventListener('click', (e) => {
   if (e.target.closest('#importBtn')) { $('#svNote').textContent = 'Pick the zip file(s)…'; return send({ cmd: 'import' }); }
   if (e.target.closest('#openFolder')) return send({ cmd: 'openFolder' });
+  if (e.target.closest('#chooseSaveFolder')) return send({ cmd: 'chooseSaveFolder' });
   const b = e.target.closest('[data-sv]');
   if (!b || b.disabled) return;
   const { sv, kind, name } = b.dataset;
@@ -65,14 +73,18 @@ function showUpdate(u) {
   $('#upTitle').textContent = `Version ${u.version} is out`;
   $('#upNotes').textContent = u.notes ? u.notes.split('\n')[0] : 'Download it, unzip it over the old folder or anywhere new.';
   $('#upGet').onclick = () => send({ cmd: 'openRelease', url: u.url });
-  $('#upLater').onclick = () => { try { localStorage.setItem('skip', u.version); } catch { } $('#update').hidden = true; };
+  $('#upLater').onclick = () => {
+    try { localStorage.setItem('skip', u.version); } catch { }
+    send({ cmd: 'skipUpdate', version: u.version });
+    $('#update').hidden = true;
+  };
   $('#update').hidden = false;
 }
-window.chrome.webview.addEventListener('message', (e) => {
-  if (!e.data) return;
-  if (e.data.type === 'saves') render(e.data);
-  if (e.data.type === 'update') showUpdate(e.data);
-});
+window.vismReceive = (message) => {
+  if (message?.type === 'saves') render(message);
+  if (message?.type === 'update') showUpdate(message);
+};
+window.chrome?.webview?.addEventListener('message', (e) => window.vismReceive(e.data));
 send({ cmd: 'checkUpdate' });
 setInterval(() => send({ cmd: 'checkUpdate' }), 6 * 3600 * 1000);
 // the game may start or stop, or autosave, while the window is open

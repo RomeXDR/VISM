@@ -1,71 +1,74 @@
-// VI Save Manager: keep, load, share and import GTA VI saves for the VIctory-based builds.
-// Every VIctory build keeps the game's saves in %LOCALAPPDATA%\victory\data\<title id>\saves.
-// This app copies that folder in and out; it never changes a save's contents.
+// VI Save Manager: keep, load, share and import saves for VIctory builds.
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.WinForms;
 
 namespace VISM;
 
 static class Program
 {
     [STAThread]
-    static void Main(string[] args)
+    static int Main(string[] args)
     {
+        bool test = args.Contains("--test", StringComparer.OrdinalIgnoreCase);
+#if WINDOWS
         ApplicationConfiguration.Initialize();
-        MainForm.TestProfile = args.Any(a => a.Equals("--test", StringComparison.OrdinalIgnoreCase));
-        Application.Run(new MainForm());
+        Application.Run(new WindowsHost(test));
+        return 0;
+#else
+        string? saveDirectory = null;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i].Equals("--test", StringComparison.OrdinalIgnoreCase)) continue;
+            if (args[i] == "--save-dir" && i + 1 < args.Length && !args[i + 1].StartsWith("--"))
+            {
+                saveDirectory = args[++i];
+                continue;
+            }
+            if (args[i] == "--help" || args[i] == "-h")
+            {
+                Console.WriteLine("Usage: VISaveManager [--test | --save-dir PATH]");
+                return 0;
+            }
+            Console.Error.WriteLine($"Unrecognized or incomplete argument: {args[i]}. See --help.");
+            return 2;
+        }
+        if (test && saveDirectory != null)
+        {
+            Console.Error.WriteLine("--test uses its own save folder. Run it without --save-dir.");
+            return 2;
+        }
+        try { return new LinuxHost(test, saveDirectory).Run(); }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("VI Save Manager: " + error.Message);
+            return 1;
+        }
+#endif
     }
 }
 
-sealed class MainForm : Form
+interface IDesktopHost
 {
-    // `VISaveManager.exe --test`: its own spots and a sandbox in place of the real game save folder
-    public static bool TestProfile;
+    void Post(string json);
+    string? ChooseExport(string filename);
+    string[] ChooseImports();
+    string? ChooseSaveFolder(string? current);
+    void RevealExport(string path);
+}
+
+sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory)
+{
     static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-    const string TitleId = "7952987A";
-    readonly WebView2 ui = new();
-    readonly string root = AppContext.BaseDirectory;
-
-    static string LocalData => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-    static string ProfileDir => Path.Combine(LocalData, TestProfile ? "VISaveManager-test" : "VISaveManager");
-    static string VictoryData => TestProfile ? Path.Combine(ProfileDir, "victory-data") : Path.Combine(LocalData, "victory", "data");
-    static string SnapsRoot => Path.Combine(ProfileDir, "saves");
-    string TeamRoot => Path.Combine(root, "team-saves");
-
-    public MainForm()
-    {
-        Text = TestProfile ? "VI Save Manager (test profile)" : "VI Save Manager";
-        try { Icon = new Icon(Path.Combine(root, "vism.ico")); } catch { }
-        BackColor = Color.FromArgb(0x12, 0x0B, 0x1F);
-        ClientSize = new Size(980, 820);
-        MinimumSize = new Size(720, 560);
-        StartPosition = FormStartPosition.CenterScreen;
-        ui.Dock = DockStyle.Fill;
-        ui.DefaultBackgroundColor = BackColor;
-        Controls.Add(ui);
-        Load += async (_, _) => await InitAsync();
-    }
-
-    async Task InitAsync()
-    {
-        Directory.CreateDirectory(ProfileDir);
-        var env = await CoreWebView2Environment.CreateAsync(null, ProfileDir);
-        await ui.EnsureCoreWebView2Async(env);
-        var core = ui.CoreWebView2;
-        core.SetVirtualHostNameToFolderMapping("app.vism", Path.Combine(root, "ui"), CoreWebView2HostResourceAccessKind.Allow);
-        core.Settings.AreDefaultContextMenusEnabled = false;
-        core.Settings.IsStatusBarEnabled = false;
-        core.WebMessageReceived += (_, e) => OnMessage(e.WebMessageAsJson);
-        core.NewWindowRequested += (_, e) => e.Handled = true;
-        core.NavigationStarting += (_, e) => { if (!e.Uri.StartsWith("https://app.vism/", StringComparison.OrdinalIgnoreCase)) e.Cancel = true; };
-        core.Navigate("https://app.vism/index.html");
-    }
+    const string TitleId = SaveLocations.TitleId;
+    readonly SaveLocations locations = new(test, saveDirectory);
+    public string ProfileDirectory => locations.ProfileDirectory;
+    string SnapsRoot => Path.Combine(ProfileDirectory, "saves");
+    string SkippedVersionFile => Path.Combine(ProfileDirectory, "skipped-version.txt");
+    static string TeamRoot => Path.Combine(AppContext.BaseDirectory, "team-saves");
 
     // ---- updates: the only thing this app asks the internet. One anonymous request to GitHub's
     //      public API for the newest release of this repo; nothing about the user is sent. ----
@@ -83,7 +86,8 @@ sealed class MainForm : Form
             var j = JsonNode.Parse(await res.Content.ReadAsStringAsync());
             var tag = ((string?)j?["tag_name"] ?? "").TrimStart('v', 'V');
             if (!Version.TryParse(tag, out var latest)) return;
-            var mine = typeof(MainForm).Assembly.GetName().Version ?? new Version(0, 0);
+            if (File.Exists(SkippedVersionFile) && File.ReadAllText(SkippedVersionFile) == latest.ToString()) return;
+            var mine = typeof(SaveManager).Assembly.GetName().Version ?? new Version(0, 0);
             if (latest <= new Version(mine.Major, mine.Minor, Math.Max(0, mine.Build))) return;
             var url = (string?)j?["html_url"] ?? $"https://github.com/{Repo}/releases/latest";
             var notes = ((string?)j?["body"] ?? "").Trim();
@@ -99,15 +103,9 @@ sealed class MainForm : Form
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
 
-    void Send(object o)
-    {
-        var json = JsonSerializer.Serialize(o, Json);
-        void Post() { try { ui.CoreWebView2?.PostWebMessageAsJson(json); } catch { } }
-        if (IsDisposed) return;
-        if (InvokeRequired) BeginInvoke(Post); else Post();
-    }
+    void Send(object value) => host.Post(JsonSerializer.Serialize(value, Json));
 
-    void OnMessage(string raw)
+    public void OnMessage(string raw)
     {
         JsonObject m;
         try { m = JsonNode.Parse(raw)!.AsObject(); } catch { return; }
@@ -115,7 +113,20 @@ sealed class MainForm : Form
         switch ((string?)m["cmd"])
         {
             case "list": SendSaves(); break;
-            case "checkUpdate": _ = CheckUpdateAsync(); break;
+            case "checkUpdate": if (!test) _ = CheckUpdateAsync(); break;
+            case "skipUpdate":
+                if (Version.TryParse((string?)m["version"], out var version))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(ProfileDirectory);
+                        File.WriteAllText(SkippedVersionFile, version.ToString());
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+                break;
+            case "chooseSaveFolder": ChooseSaveFolder(); break;
             case "openRelease": OpenRelease((string?)m["url"]); break;
             case "snap": SaveSnap(name); break;
             case "load": SaveLoad(name, (string?)m["kind"] == "team"); break;
@@ -128,39 +139,50 @@ sealed class MainForm : Form
     }
 
     // ---- files ----
-    static string? SavesDir()
+    void ChooseSaveFolder()
     {
-        if (!Directory.Exists(VictoryData)) return null;
-        var own = Path.Combine(VictoryData, TitleId, "saves");
-        if (Directory.Exists(own)) return own;
-        return Directory.GetDirectories(VictoryData).Select(d => Path.Combine(d, "saves")).FirstOrDefault(Directory.Exists);
+        if (test || !OperatingSystem.IsLinux()) return;
+        try
+        {
+            var folder = host.ChooseSaveFolder(SavesDir());
+            if (folder == null) { SendSaves(); return; }
+            locations.SetLocation(folder);
+            SendSaves("Game save folder selected.");
+        }
+        catch (Exception error) { SendSaves(error.Message, false); }
     }
-    static long DirSize(string d) { try { return Directory.EnumerateFiles(d, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length); } catch { return 0; } }
+
+    string? SavesDir() => locations.GetSaveDirectory();
+    static readonly EnumerationOptions SaveTree = new() { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
+    static long DirSize(string d) { try { return Directory.EnumerateFiles(d, "*", SaveTree).Sum(f => new FileInfo(f).Length); } catch { return 0; } }
     static DateTime DirNewest(string d)
     {
-        try { return Directory.EnumerateFiles(d, "*", SearchOption.AllDirectories).Where(f => Path.GetFileName(f) != "about.txt").Select(f => File.GetLastWriteTime(f)).DefaultIfEmpty(DateTime.MinValue).Max(); }
+        try { return Directory.EnumerateFiles(d, "*", SaveTree).Where(f => Path.GetFileName(f) != "about.txt").Select(f => File.GetLastWriteTime(f)).DefaultIfEmpty(DateTime.MinValue).Max(); }
         catch { return DateTime.MinValue; }
     }
     static void CopyDir(string from, string to)
     {
         Directory.CreateDirectory(to);
-        foreach (var f in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
+        foreach (var entry in new DirectoryInfo(from).EnumerateFileSystemInfos())
         {
-            var t = Path.Combine(to, Path.GetRelativePath(from, f));
-            Directory.CreateDirectory(Path.GetDirectoryName(t)!);
-            File.Copy(f, t, true);
+            if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new IOException($"The save contains a link at {entry.Name}.");
+            var target = Path.Combine(to, entry.Name);
+            if (entry is DirectoryInfo) CopyDir(entry.FullName, target);
+            else File.Copy(entry.FullName, target, true);
         }
     }
     static void DeleteDir(string d)
     {
         if (!Directory.Exists(d)) return;
-        foreach (var f in Directory.EnumerateFiles(d, "*", SearchOption.AllDirectories)) { try { File.SetAttributes(f, FileAttributes.Normal); } catch { } }
+        if (OperatingSystem.IsWindows() && (File.GetAttributes(d) & FileAttributes.ReparsePoint) == 0)
+            foreach (var f in Directory.EnumerateFiles(d, "*", SaveTree)) { try { File.SetAttributes(f, FileAttributes.Normal); } catch { } }
         Directory.Delete(d, true);
     }
     static string SafeName(string? n)
     {
-        var bad = Path.GetInvalidFileNameChars();
-        var s = string.Concat((n ?? "").Trim().Select(c => bad.Contains(c) ? '-' : c)).Trim('.', ' ');
+        const string windowsInvalid = "<>:\\|?*/\"";
+        var s = string.Concat((n ?? "").Trim().Select(c => c < ' ' || windowsInvalid.Contains(c) ? '-' : c)).Trim('.', ' ');
         return s.Length > 60 ? s[..60] : s;
     }
     static string Note(string dir) { var a = Path.Combine(dir, "about.txt"); try { return File.Exists(a) ? File.ReadAllText(a).Trim() : ""; } catch { return ""; } }
@@ -171,8 +193,30 @@ sealed class MainForm : Form
         return n;
     }
     // a VIctory build that is running would write over a save loaded under it
-    static bool GameRunning()
+    bool GameRunning()
     {
+        if (test) return false;
+        if (OperatingSystem.IsLinux())
+        {
+            static bool IsVictory(string value)
+            {
+                var name = Path.GetFileName(value.Replace('\\', '/'));
+                return name.Equals("victory", StringComparison.OrdinalIgnoreCase) || name.Equals("victory.exe", StringComparison.OrdinalIgnoreCase);
+            }
+            foreach (var pid in Directory.EnumerateDirectories("/proc"))
+            {
+                if (!char.IsAsciiDigit(Path.GetFileName(pid)[0])) continue;
+                try
+                {
+                    if (IsVictory(File.ReadAllText(Path.Combine(pid, "comm")).TrimEnd())) return true;
+                    var args = File.ReadAllText(Path.Combine(pid, "cmdline")).Split('\0', 3);
+                    if (IsVictory(args[0]) || (args.Length > 1 && Path.GetFileName(args[0]).StartsWith("wine", StringComparison.Ordinal) && IsVictory(args[1]))) return true;
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            return false;
+        }
         try { return Process.GetProcessesByName("victory").Length > 0; } catch { return false; }
     }
     static void Open(string path) { try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); } catch { } }
@@ -181,17 +225,27 @@ sealed class MainForm : Form
     void SendSaves(string? note = null, bool ok = true)
     {
         var dir = SavesDir();
-        object Item(string d) => new { name = Path.GetFileName(d), size = DirSize(d), gameTime = DirNewest(d).ToString("yyyy-MM-dd HH:mm"), kept = Directory.GetCreationTime(d).ToString("yyyy-MM-dd HH:mm"), note = Note(d), auto = Path.GetFileName(d).StartsWith("auto ") };
-        var spots = (Directory.Exists(SnapsRoot) ? Directory.GetDirectories(SnapsRoot) : Array.Empty<string>()).OrderByDescending(Directory.GetCreationTime).Select(Item).ToList();
+        object Item(string d) => new { name = Path.GetFileName(d), size = DirSize(d), gameTime = DirNewest(d).ToString("yyyy-MM-dd HH:mm"), kept = KeptTime(d).ToString("yyyy-MM-dd HH:mm"), note = Note(d), auto = Path.GetFileName(d).StartsWith("auto ") };
+        var spots = (Directory.Exists(SnapsRoot) ? Directory.GetDirectories(SnapsRoot) : Array.Empty<string>()).OrderByDescending(KeptTime).Select(Item).ToList();
         var team = (Directory.Exists(TeamRoot) ? Directory.GetDirectories(TeamRoot) : Array.Empty<string>()).OrderBy(d => d).Select(Item).ToList();
         Send(new
         {
-            type = "saves", note, ok, test = TestProfile,
+            type = "saves", note, ok, test, canChooseSaveFolder = OperatingSystem.IsLinux() && !test,
+            saveDirectory = OperatingSystem.IsLinux() ? dir : null,
             found = dir != null && DirSize(dir) > 0,
             size = dir != null ? DirSize(dir) : 0,
             newest = dir != null ? DirNewest(dir).ToString("yyyy-MM-dd HH:mm") : "",
             running = GameRunning(), spots, team,
         });
+    }
+
+    static DateTime KeptTime(string directory) => OperatingSystem.IsWindows()
+        ? Directory.GetCreationTime(directory) : Directory.GetLastWriteTime(directory);
+
+    static void MarkKept(string directory)
+    {
+        if (OperatingSystem.IsWindows()) Directory.SetCreationTime(directory, DateTime.Now);
+        else Directory.SetLastWriteTime(directory, DateTime.Now);
     }
 
     void SaveSnap(string? name)
@@ -201,11 +255,11 @@ sealed class MainForm : Form
             var n = SafeName(name);
             var dir = SavesDir();
             if (n.Length == 0) { SendSaves("Give the save a name first.", false); return; }
-            if (dir == null) { SendSaves("No game save found yet.", false); return; }
+            if (dir == null || !Directory.Exists(dir)) { SendSaves("No game save found yet.", false); return; }
             var target = Path.Combine(SnapsRoot, n);
             if (Directory.Exists(target)) { SendSaves($"A save called \"{n}\" already exists. Pick another name or delete it first.", false); return; }
             CopyDir(dir, target);
-            Directory.SetCreationTime(target, DateTime.Now);
+            MarkKept(target);
             SendSaves($"Saved the current game as \"{n}\".");
         }
         catch (Exception e) { SendSaves("Couldn't save: " + e.Message, false); }
@@ -215,12 +269,12 @@ sealed class MainForm : Form
     string? Backup()
     {
         var dir = SavesDir();
-        if (dir == null || DirSize(dir) == 0) return null;
-        var backup = Path.Combine(SnapsRoot, "auto " + DateTime.Now.ToString("yyyy-MM-dd HHmmss"));
+        if (dir == null || !Directory.Exists(dir) || !Directory.EnumerateFileSystemEntries(dir).Any()) return null;
+        var backup = Path.Combine(SnapsRoot, Unique(SnapsRoot, "auto " + DateTime.Now.ToString("yyyy-MM-dd HHmmss")));
         CopyDir(dir, backup);
-        Directory.SetCreationTime(backup, DateTime.Now);
+        MarkKept(backup);
         foreach (var old in Directory.GetDirectories(SnapsRoot).Where(d => Path.GetFileName(d).StartsWith("auto "))
-                     .OrderByDescending(Directory.GetCreationTime).Skip(5)) DeleteDir(old);
+                     .OrderByDescending(KeptTime).Skip(5)) DeleteDir(old);
         return Path.GetFileName(backup);
     }
 
@@ -229,14 +283,33 @@ sealed class MainForm : Form
         try
         {
             if (GameRunning()) { SendSaves("Close the game first: it would overwrite the save when it autosaves.", false); return; }
-            var src = Path.Combine(fromTeam ? TeamRoot : SnapsRoot, SafeName(name));
+            var label = SafeName(name);
+            if (label.Length == 0) { SendSaves("Select a save to load.", false); return; }
+            var src = Path.Combine(fromTeam ? TeamRoot : SnapsRoot, label);
             if (!Directory.Exists(src)) { SendSaves("That save is gone.", false); return; }
-            var dir = SavesDir() ?? Path.Combine(VictoryData, TitleId, "saves");
-            var backup = Backup();
-            DeleteDir(dir);
-            CopyDir(src, dir);
-            var about = Path.Combine(dir, "about.txt");
-            if (File.Exists(about)) File.Delete(about);
+            var dir = locations.RequireWritableLocation();
+            if (Path.GetFullPath(src).Equals(Path.GetFullPath(dir), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new IOException("Choose the game's saves folder outside the kept saves library.");
+            string? backup = null;
+            Directory.CreateDirectory(Path.GetDirectoryName(dir)!);
+            var staged = dir + ".vism-new-" + Guid.NewGuid().ToString("N");
+            var previous = dir + ".vism-old-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                CopyDir(src, staged);
+                File.Delete(Path.Combine(staged, "about.txt"));
+                backup = Backup();
+                if (GameRunning()) throw new IOException("Close the game before replacing its save.");
+                if (Directory.Exists(dir)) Directory.Move(dir, previous);
+                try { Directory.Move(staged, dir); }
+                catch
+                {
+                    if (Directory.Exists(previous)) Directory.Move(previous, dir);
+                    throw;
+                }
+                DeleteDir(previous);
+            }
+            finally { DeleteDir(staged); }
             SendSaves($"Loaded \"{SafeName(name)}\".{(backup != null ? $" Your previous save was kept as \"{backup}\"." : "")} Start the game and pick Continue.");
         }
         catch (Exception e) { SendSaves("Couldn't load: " + e.Message, false); }
@@ -244,7 +317,13 @@ sealed class MainForm : Form
 
     void SaveDelete(string? name)
     {
-        try { DeleteDir(Path.Combine(SnapsRoot, SafeName(name))); SendSaves($"Deleted \"{SafeName(name)}\"."); }
+        try
+        {
+            var label = SafeName(name);
+            if (label.Length == 0) { SendSaves("Select a save to delete.", false); return; }
+            DeleteDir(Path.Combine(SnapsRoot, label));
+            SendSaves($"Deleted \"{label}\".");
+        }
         catch (Exception e) { SendSaves("Couldn't delete: " + e.Message, false); }
     }
 
@@ -255,10 +334,12 @@ sealed class MainForm : Form
         {
             if (GameRunning()) { SendSaves("Close the game first.", false); return; }
             var dir = SavesDir();
-            if (dir == null) { SendSaves("No save yet: the game starts a new story anyway."); return; }
+            if (dir == null || !Directory.Exists(dir)) { SendSaves("No save yet: the game starts a new story anyway."); return; }
+            dir = locations.RequireWritableLocation();
             var backup = Backup();
+            if (GameRunning()) { SendSaves("Close the game before clearing the story.", false); return; }
             var cleared = 0;
-            foreach (var blob in Directory.GetDirectories(dir, "*~*", SearchOption.AllDirectories).ToList())
+            foreach (var blob in Directory.GetDirectories(dir, "*~*", SaveTree))
             {
                 if (Path.GetFileName(blob).StartsWith("SettingsProfileSettings", StringComparison.OrdinalIgnoreCase) || !Directory.Exists(blob)) continue;
                 DeleteDir(blob); cleared++;
@@ -275,29 +356,23 @@ sealed class MainForm : Form
         {
             string src, label;
             if (kind == "current") { src = SavesDir() ?? ""; label = "Current save " + DateTime.Now.ToString("yyyy-MM-dd HHmm"); }
-            else { label = SafeName(name); src = Path.Combine(kind == "team" ? TeamRoot : SnapsRoot, label); }
+            else { label = SafeName(name); src = label.Length == 0 ? "" : Path.Combine(kind == "team" ? TeamRoot : SnapsRoot, label); }
             if (src.Length == 0 || !Directory.Exists(src)) { SendSaves("Nothing to share.", false); return; }
-            using var dlg = new SaveFileDialog
-            {
-                Title = "Share this save as a zip", Filter = "GTA VI save (*.zip)|*.zip",
-                FileName = $"GTA VI save - {label}.zip",
-                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-            };
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-            if (File.Exists(dlg.FileName)) File.Delete(dlg.FileName);
-            using (var zip = ZipFile.Open(dlg.FileName, ZipArchiveMode.Create))
+            var filename = host.ChooseExport($"GTA VI save - {label}.zip");
+            if (filename == null) { SendSaves(); return; }
+            using (var zip = new ZipArchive(File.Create(filename), ZipArchiveMode.Create))
             {
                 var info = new { name = label, note = Note(src), game = "GTA VI (Xbox Series), title " + TitleId, savedAt = DirNewest(src).ToString("yyyy-MM-dd HH:mm"), madeWith = "VI Save Manager" };
                 var e = zip.CreateEntry("save-info.json");
                 using (var w = new StreamWriter(e.Open(), new UTF8Encoding(false))) w.Write(JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true }));
-                foreach (var f in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+                foreach (var f in Directory.EnumerateFiles(src, "*", SaveTree))
                 {
                     if (Path.GetFileName(f) == "about.txt") continue;
                     zip.CreateEntryFromFile(f, "saves/" + Path.GetRelativePath(src, f).Replace('\\', '/'));
                 }
             }
-            try { Process.Start("explorer.exe", $"/select,\"{dlg.FileName}\""); } catch { }
-            SendSaves($"Made {Path.GetFileName(dlg.FileName)}: send it to anyone, they click Import.");
+            host.RevealExport(filename);
+            SendSaves($"Made {Path.GetFileName(filename)}: send it to anyone, they click Import.");
         }
         catch (Exception e) { SendSaves("Couldn't make the zip: " + e.Message, false); }
     }
@@ -306,10 +381,10 @@ sealed class MainForm : Form
     static readonly Regex UserFolder = new("^[0-9A-Fa-f]{16}$");
     void Import()
     {
-        using var dlg = new OpenFileDialog { Title = "Import GTA VI saves", Filter = "Save zips (*.zip)|*.zip", Multiselect = true };
-        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        var files = host.ChooseImports();
+        if (files.Length == 0) { SendSaves(); return; }
         var done = new List<string>(); var failed = new List<string>();
-        foreach (var file in dlg.FileNames)
+        foreach (var file in files)
         {
             var tmp = Path.Combine(Path.GetTempPath(), "vism-" + Guid.NewGuid().ToString("N"));
             try
@@ -332,7 +407,7 @@ sealed class MainForm : Form
                 foreach (var user in Directory.GetDirectories(root).Where(c => UserFolder.IsMatch(Path.GetFileName(c))))
                     CopyDir(user, Path.Combine(target, Path.GetFileName(user)));
                 File.WriteAllText(Path.Combine(target, "about.txt"), note.Length > 0 ? note : "Imported from " + Path.GetFileName(file));
-                Directory.SetCreationTime(target, DateTime.Now);
+                MarkKept(target);
                 done.Add(name);
             }
             catch (Exception e) { failed.Add($"{Path.GetFileName(file)} ({e.Message})"); }
