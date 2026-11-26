@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -82,6 +82,11 @@ try {
         assert.deepEqual(await readFile(join(destination, path)), await readFile(join(fixture, path)));
     }
     console.log('Windows NativeAOT loaded the bundled page and restored the test save byte-for-byte.');
+} catch (error) {
+    execFileSync('pwsh', ['-NoProfile', '-Command',
+        "Get-Process VISaveManager,msedgewebview2 -ErrorAction SilentlyContinue | Format-Table Id,SessionId,MainWindowTitle,ProcessName",
+    ], { stdio: 'inherit', timeout: 5000 });
+    throw error;
 } finally {
     socket?.close();
     if (app.exitCode === null) app.kill();

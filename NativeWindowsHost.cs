@@ -32,17 +32,31 @@ sealed class NativeWindowsHost : Form, IDesktopHost
         {
             e.EnableDevTools = test;
             if (e is WindowsWebView2EnvironmentRequestedEventArgs webView)
+            {
                 webView.UserDataFolder = controller.ProfileDirectory;
+                if (test) webView.AdditionalBrowserArguments = Environment.GetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS");
+            }
+            if (test) Console.Error.WriteLine("WebView environment: " + e.GetType().Name);
         };
-        view.NavigationStarted += (_, e) => e.Cancel = e.Request != page;
+        view.NavigationStarted += (_, e) =>
+        {
+            e.Cancel = e.Request != page;
+            if (test) Console.Error.WriteLine($"WebView navigation: {e.Request} (cancelled: {e.Cancel})");
+        };
         view.NewWindowRequested += (_, e) => e.Handled = true;
         view.NavigationCompleted += (_, e) =>
         {
+            if (test) Console.Error.WriteLine($"WebView navigation complete: {e.Request} (success: {e.IsSuccess})");
             if (e.IsSuccess && e.Request == page) PostCurrentSaves();
         };
         view.WebMessageReceived += (_, e) => Dispatcher.UIThread.Post(() => Receive(e.Body));
         Controls.Add(new Majorsilence.Forms.NativeControlHost { Dock = DockStyle.Fill, NativeControl = view });
         view.Source = page;
+        if (test)
+        {
+            Shown += (_, _) => Console.Error.WriteLine("Compatibility form shown");
+            view.AdapterCreated += (_, _) => Console.Error.WriteLine("WebView adapter created");
+        }
         FormClosed += (_, _) => closing = true;
     }
 
@@ -50,6 +64,7 @@ sealed class NativeWindowsHost : Form, IDesktopHost
     {
         try
         {
+            if (test) Console.Error.WriteLine("Starting the compatibility host");
             Platform.Backend = new AvaloniaPlatformBackend();
             Platform.Backend.Initialize();
             if (!WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WebView2).IsSupported)
