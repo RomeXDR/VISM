@@ -48,7 +48,7 @@ jobs:
         run: |
           $required = @('${{ matrix.executable }}', 'ui/index.html', 'ui/app.js', 'team-saves/Start/about.txt')
           if ($IsWindows) {
-            $required += @('VISM.WindowsHost.dll', 'WebView2Loader.dll')
+            $required += @('libSkiaSharp.dll', 'libHarfBuzzSharp.dll')
           }
           foreach ($path in $required) {
             if (!(Test-Path -LiteralPath "dist/publish/$path" -PathType Leaf)) {

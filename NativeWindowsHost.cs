@@ -1,31 +1,61 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Avalonia.Controls;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using Majorsilence.Forms;
+using Majorsilence.Forms.Backends;
 
 namespace VISM;
 
-sealed class NativeWindowsHost : IDesktopHost
+// The compatibility form and its Skia-rendered chrome use the Avalonia backend;
+// WebView2 owns the content surface inside the form.
+sealed class NativeWindowsHost : Form, IDesktopHost
 {
-    const string HostLibrary = "VISM.WindowsHost.dll";
+    readonly Uri page = new(Path.Combine(AppContext.BaseDirectory, "ui", "index.html"));
+    readonly NativeWebView view = new();
     readonly SaveManager controller;
-    readonly ReceiveMessage receive;
+    bool closing;
+    bool handlingMessage;
 
     NativeWindowsHost(bool test)
     {
         controller = new SaveManager(this, test, null);
-        receive = Receive;
+        Directory.CreateDirectory(controller.ProfileDirectory);
+
+        Text = test ? "VI Save Manager (test profile)" : "VI Save Manager";
+        ClientSize = new(980, 820);
+        MinimumSize = new(720, 560);
+        StartPosition = FormStartPosition.CenterScreen;
+
+        view.EnvironmentRequested += (_, e) =>
+        {
+            if (e is WindowsWebView2EnvironmentRequestedEventArgs webView)
+                webView.UserDataFolder = controller.ProfileDirectory;
+        };
+        view.NavigationStarted += (_, e) => e.Cancel = e.Request != page;
+        view.NewWindowRequested += (_, e) => e.Handled = true;
+        view.NavigationCompleted += (_, e) =>
+        {
+            if (e.IsSuccess && e.Request == page) PostCurrentSaves();
+        };
+        view.WebMessageReceived += (_, e) => Dispatcher.UIThread.Post(() => Receive(e.Body));
+        Controls.Add(new Majorsilence.Forms.NativeControlHost { Dock = DockStyle.Fill, NativeControl = view });
+        view.Source = page;
+        FormClosed += (_, _) => closing = true;
     }
 
     public static int Start(bool test)
     {
         try
         {
-            var host = new NativeWindowsHost(test);
-            Directory.CreateDirectory(host.controller.ProfileDirectory);
-            string root = AppContext.BaseDirectory;
-            int result = vism_run(host.receive, host.controller.ProfileDirectory, Path.Combine(root, "ui"),
-                test ? "VI Save Manager (test profile)" : "VI Save Manager", Path.Combine(root, "vism.ico"));
-            GC.KeepAlive(host);
-            return result;
+            Platform.Backend = new AvaloniaPlatformBackend();
+            Platform.Backend.Initialize();
+            if (!WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WebView2).IsSupported)
+                throw new InvalidOperationException("Install the Microsoft Edge WebView2 Runtime to start VI Save Manager.");
+            using var host = new NativeWindowsHost(test);
+            Majorsilence.Forms.Application.Run(host);
+            return 0;
         }
         catch (Exception error)
         {
@@ -34,22 +64,45 @@ sealed class NativeWindowsHost : IDesktopHost
         }
     }
 
-    void Receive(IntPtr message)
+    void PostCurrentSaves() => Dispatcher.UIThread.Post(() => Receive("""{"cmd":"list"}"""));
+
+    void Receive(string? json)
     {
-        try
-        {
-            if (Marshal.PtrToStringUni(message) is string json) controller.OnMessage(json);
-        }
+        if (closing || handlingMessage || view.Source != page || json is null) return;
+        handlingMessage = true;
+        try { controller.OnMessage(json); }
         catch (Exception error) { Console.Error.WriteLine(error.Message); }
+        finally { handlingMessage = false; }
     }
 
-    public void Post(string json) => vism_post(json);
+    public void Post(string json) => Dispatcher.UIThread.Post(async () =>
+    {
+        if (closing || view.Source != page) return;
+        try { await view.InvokeScript($"window.vismReceive?.({json});"); }
+        catch (Exception error) { Console.Error.WriteLine(error.Message); }
+    });
+
     public string? ChooseSaveFolder(string? current) => null;
 
-    public string? ChooseExport(string filename) => ChooseFiles(true, filename,
-        Environment.GetFolderPath(Environment.SpecialFolder.Desktop)).FirstOrDefault();
+    public string? ChooseExport(string filename)
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Title = "Share this save as a zip", Filter = "GTA VI save (*.zip)|*.zip",
+            FileName = filename, DefaultExt = "zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+        };
+        return dialog.ShowDialog(this) == DialogResult.OK ? dialog.FileName : null;
+    }
 
-    public string[] ChooseImports() => ChooseFiles(false, "", null);
+    public string[] ChooseImports()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Import GTA VI saves", Filter = "Save zips (*.zip)|*.zip", Multiselect = true,
+        };
+        return dialog.ShowDialog(this) == DialogResult.OK ? dialog.FileNames : [];
+    }
 
     public void RevealExport(string path)
     {
@@ -57,34 +110,6 @@ sealed class NativeWindowsHost : IDesktopHost
         catch (System.ComponentModel.Win32Exception) { }
     }
 
-    static unsafe string[] ChooseFiles(bool save, string filename, string? initial)
-    {
-        var buffer = new char[32_768];
-        filename.AsSpan().CopyTo(buffer);
-        fixed (char* address = buffer)
-            if (vism_choose_files(save ? 1 : 0, address, (uint)buffer.Length, initial) == 0) return [];
-        var files = new List<string>();
-        int offset = 0;
-        while (offset < buffer.Length && buffer[offset] != '\0')
-        {
-            int end = Array.IndexOf(buffer, '\0', offset);
-            if (end < 0) return [];
-            files.Add(new string(buffer, offset, end - offset));
-            offset = end + 1;
-        }
-        return files.Count > 1 ? files.Skip(1).Select(file => Path.Combine(files[0], file)).ToArray() : files.ToArray();
-    }
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate void ReceiveMessage(IntPtr message);
-    [DefaultDllImportSearchPaths(DllImportSearchPath.ApplicationDirectory | DllImportSearchPath.System32)]
-    [DllImport(HostLibrary, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode, ExactSpelling = true)]
-    static extern int vism_run(ReceiveMessage receive, string userData, string uiFolder, string title, string iconPath);
-    [DefaultDllImportSearchPaths(DllImportSearchPath.ApplicationDirectory | DllImportSearchPath.System32)]
-    [DllImport(HostLibrary, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode, ExactSpelling = true)]
-    static extern void vism_post(string json);
-    [DefaultDllImportSearchPaths(DllImportSearchPath.ApplicationDirectory | DllImportSearchPath.System32)]
-    [DllImport(HostLibrary, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode, ExactSpelling = true)]
-    static extern unsafe int vism_choose_files(int save, char* buffer, uint capacity, string? initial);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     static extern int MessageBoxW(IntPtr window, string text, string caption, uint type);
 }

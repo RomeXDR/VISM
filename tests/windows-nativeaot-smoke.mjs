@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const publish = resolve(process.argv[2]);
 const app = spawn(join(publish, 'VISaveManager.exe'), ['--test'], {
+    stdio: 'inherit',
     env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9315' },
 });
 let socket;
@@ -27,7 +28,7 @@ try {
         }).catch(() => null);
         if (!response?.ok) return null;
         const pages = await response.json();
-        return pages.find(page => page.url === 'https://app.vism/index.html')?.webSocketDebuggerUrl;
+        return pages.find(page => page.url.startsWith('file:') && page.url.endsWith('/ui/index.html'))?.webSocketDebuggerUrl;
     }, 'the bundled WebView2 page');
 
     socket = new WebSocket(url);
@@ -73,8 +74,8 @@ try {
         .filter(entry => entry.isFile() && entry.name !== 'about.txt');
     assert.ok(files.length > 0);
     for (const file of files) {
-        const relative = join(file.parentPath.slice(fixture.length), file.name);
-        assert.deepEqual(await readFile(join(destination, relative)), await readFile(join(fixture, relative)));
+        const path = join(relative(fixture, file.parentPath), file.name);
+        assert.deepEqual(await readFile(join(destination, path)), await readFile(join(fixture, path)));
     }
     console.log('Windows NativeAOT loaded the bundled page and restored the test save byte-for-byte.');
 } finally {

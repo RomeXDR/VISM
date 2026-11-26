@@ -41,7 +41,7 @@ Kept saves and backups are in `~/.local/share/VISaveManager/saves` (or under `$X
 
 Download the Windows zip from **Releases**, extract it, and run `VISaveManager.exe`. Windows 10 or later and the Microsoft Edge WebView2 Runtime are required. The game folder is `%LOCALAPPDATA%\victory\data\7952987A\saves`. Kept saves and backups are in `%LOCALAPPDATA%\VISaveManager\saves`.
 
-To build a Windows NativeAOT ZIP from source, install the .NET 10 SDK and Visual Studio Build Tools with **Desktop development with C++**. Run `release.ps1` on Windows x64.
+To build a Windows NativeAOT ZIP from source, install the .NET 10 SDK and Visual Studio Build Tools with **Desktop development with C++**. Run `release.ps1` on Windows x64. The NativeAOT build uses the Majorsilence.Forms compatibility layer with its Avalonia backend and ships the Windows x64 SkiaSharp and HarfBuzzSharp libraries alongside the EXE.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1     # build and add shortcuts

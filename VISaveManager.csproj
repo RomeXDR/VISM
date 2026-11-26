@@ -31,11 +31,17 @@
     <DefineConstants>$(DefineConstants);VISM_NATIVE_WINDOWS</DefineConstants>
     <OutputType>WinExe</OutputType>
     <ApplicationIcon>vism.ico</ApplicationIcon>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>vism.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
     <Compile Remove="LinuxHost.cs" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" GeneratePathProperty="true" ExcludeAssets="all" />
+    <PackageReference Include="Majorsilence.Forms.Avalonia" Version="26.11.19" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" GeneratePathProperty="true" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.3" GeneratePathProperty="true" />
+    <None Include="$(PkgSkiaSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgSkiaSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt"
+          Link="THIRD-PARTY/SkiaSharp-%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgHarfBuzzSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgHarfBuzzSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt"
+          Link="THIRD-PARTY/HarfBuzzSharp-%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup Condition="'$(VismWindows)' != 'true' or '$(PublishAot)' != 'true'">
     <Compile Remove="NativeWindowsHost.cs" />
@@ -46,16 +52,4 @@
   <ItemGroup>
     <None Update="vism.ico;ui/**/*;team-saves/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
-  <Target Name="BuildNativeWindowsHost" AfterTargets="ComputeFilesToPublish"
-          Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
-    <Error Condition="'$(RuntimeIdentifier)' != 'win-x64'" Text="The VISM NativeAOT Windows host supports win-x64." />
-    <PropertyGroup>
-      <VismHostOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'vism-host'))</VismHostOutput>
-    </PropertyGroup>
-    <Exec Command="&quot;$(MSBuildProjectDirectory)\native\build-windows.cmd&quot; &quot;$(PkgMicrosoft_Web_WebView2)&quot; &quot;$(VismHostOutput)&quot;" />
-    <ItemGroup>
-      <ResolvedFileToPublish Include="$(VismHostOutput)/VISM.WindowsHost.dll;$(VismHostOutput)/WebView2Loader.dll"
-                             RelativePath="%(Filename)%(Extension)" CopyToPublishDirectory="Always" />
-    </ItemGroup>
-  </Target>
 </Project>
