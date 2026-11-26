@@ -24,7 +24,7 @@ sudo dnf install gtk3 webkit2gtk4.1     # Nobara / Fedora
 sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0  # Debian / Ubuntu
 ```
 
-Build with the .NET 8 SDK or newer, then launch from the output directory. The default build uses the installed .NET runtime. For a shareable archive that includes .NET, use `./build.sh --release`. Extract that archive into its own folder and run `./VISaveManager`.
+Build with the .NET 8 SDK or newer, then launch from the output directory. The default build uses the installed .NET runtime. For a shareable archive, use `./build.sh --release`: it compiles with **Native AOT** into one native `VISaveManager` executable that needs no .NET install (needs `clang` and the zlib headers: `sudo dnf install clang zlib-devel` or `sudo apt install clang zlib1g-dev`). Extract that archive into its own folder and run `./VISaveManager`.
 
 ```sh
 ./build.sh
@@ -51,8 +51,8 @@ powershell -ExecutionPolicy Bypass -File release.ps1   # make the zip to share
 `dotnet build -c Release` defaults to the host OS. You can also target Linux or Windows explicitly with the same checkout. Cross publishing requires the matching SDK/runtime packs, which `dotnet publish` restores from NuGet:
 
 ```sh
-dotnet publish VISaveManager.csproj -c Release -r linux-x64 --self-contained true -o dist/linux-x64-self-contained
-dotnet publish VISaveManager.csproj -c Release -r win-x64 --self-contained true -o dist/win-x64-self-contained
+dotnet publish VISaveManager.csproj -c Release -r linux-x64 -o dist/linux-x64     # Native AOT
+dotnet publish VISaveManager.csproj -c Release -r win-x64 -o dist/win-x64         # single-file, self-contained, ReadyToRun
 ```
 
 ## Automated builds
@@ -63,3 +63,8 @@ The **Build VISM** workflow compiles both platforms on pull requests into `main`
 - `VISaveManager-win-x64` contains `VISaveManager-win-x64.zip`. Extract it to a folder and run `VISaveManager.exe`. The WebView2 Runtime is required.
 
 Both archives include .NET, the application interface, and the bundled team saves.
+
+Release builds: Linux is compiled with Native AOT (one native executable, no .NET needed). Windows
+can't use Native AOT because WinForms and WebView2 don't support it, so it ships as one
+self-contained, ReadyToRun-compiled `VISaveManager.exe` instead (no .NET needed either). Both keep
+the `ui` and `team-saves` folders next to the executable.

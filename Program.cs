@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace VISM;
@@ -62,7 +63,6 @@ interface IDesktopHost
 
 sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory)
 {
-    static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     const string TitleId = SaveLocations.TitleId;
     readonly SaveLocations locations = new(test, saveDirectory);
     public string ProfileDirectory => locations.ProfileDirectory;
@@ -92,7 +92,7 @@ sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory)
             var url = (string?)j?["html_url"] ?? $"https://github.com/{Repo}/releases/latest";
             var notes = ((string?)j?["body"] ?? "").Trim();
             if (notes.Length > 400) notes = notes[..400] + "…";
-            Send(new { type = "update", version = latest.ToString(), url, notes });
+            Send(new UpdateMessage("update", latest.ToString(), url, notes));
         }
         catch { }
     }
@@ -103,7 +103,9 @@ sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory)
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
 
-    void Send(object value) => host.Post(JsonSerializer.Serialize(value, Json));
+    // messages to the page: types known at build time, so Native AOT needs no reflection
+    void Send(UpdateMessage value) => host.Post(JsonSerializer.Serialize(value, VismJson.Default.UpdateMessage));
+    void Send(SavesMessage value) => host.Post(JsonSerializer.Serialize(value, VismJson.Default.SavesMessage));
 
     public void OnMessage(string raw)
     {
@@ -225,18 +227,16 @@ sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory)
     void SendSaves(string? note = null, bool ok = true)
     {
         var dir = SavesDir();
-        object Item(string d) => new { name = Path.GetFileName(d), size = DirSize(d), gameTime = DirNewest(d).ToString("yyyy-MM-dd HH:mm"), kept = KeptTime(d).ToString("yyyy-MM-dd HH:mm"), note = Note(d), auto = Path.GetFileName(d).StartsWith("auto ") };
+        SaveItem Item(string d) => new(Path.GetFileName(d), DirSize(d), DirNewest(d).ToString("yyyy-MM-dd HH:mm"), KeptTime(d).ToString("yyyy-MM-dd HH:mm"), Note(d), Path.GetFileName(d).StartsWith("auto "));
         var spots = (Directory.Exists(SnapsRoot) ? Directory.GetDirectories(SnapsRoot) : Array.Empty<string>()).OrderByDescending(KeptTime).Select(Item).ToList();
         var team = (Directory.Exists(TeamRoot) ? Directory.GetDirectories(TeamRoot) : Array.Empty<string>()).OrderBy(d => d).Select(Item).ToList();
-        Send(new
-        {
-            type = "saves", note, ok, test, canChooseSaveFolder = OperatingSystem.IsLinux() && !test,
-            saveDirectory = OperatingSystem.IsLinux() ? dir : null,
-            found = dir != null && DirSize(dir) > 0,
-            size = dir != null ? DirSize(dir) : 0,
-            newest = dir != null ? DirNewest(dir).ToString("yyyy-MM-dd HH:mm") : "",
-            running = GameRunning(), spots, team,
-        });
+        Send(new SavesMessage(
+            "saves", note, ok, test, OperatingSystem.IsLinux() && !test,
+            OperatingSystem.IsLinux() ? dir : null,
+            dir != null && DirSize(dir) > 0,
+            dir != null ? DirSize(dir) : 0,
+            dir != null ? DirNewest(dir).ToString("yyyy-MM-dd HH:mm") : "",
+            GameRunning(), spots, team));
     }
 
     static DateTime KeptTime(string directory) => OperatingSystem.IsWindows()
@@ -362,9 +362,9 @@ sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory)
             if (filename == null) { SendSaves(); return; }
             using (var zip = new ZipArchive(File.Create(filename), ZipArchiveMode.Create))
             {
-                var info = new { name = label, note = Note(src), game = "GTA VI (Xbox Series), title " + TitleId, savedAt = DirNewest(src).ToString("yyyy-MM-dd HH:mm"), madeWith = "VI Save Manager" };
+                var info = new SaveInfo(label, Note(src), "GTA VI (Xbox Series), title " + TitleId, DirNewest(src).ToString("yyyy-MM-dd HH:mm"), "VI Save Manager");
                 var e = zip.CreateEntry("save-info.json");
-                using (var w = new StreamWriter(e.Open(), new UTF8Encoding(false))) w.Write(JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true }));
+                using (var w = new StreamWriter(e.Open(), new UTF8Encoding(false))) w.Write(JsonSerializer.Serialize(info, VismJsonIndented.Default.SaveInfo));
                 foreach (var f in Directory.EnumerateFiles(src, "*", SaveTree))
                 {
                     if (Path.GetFileName(f) == "about.txt") continue;
@@ -418,3 +418,20 @@ sealed class SaveManager(IDesktopHost host, bool test, string? saveDirectory)
         SendSaves(msg.Trim(), failed.Count == 0);
     }
 }
+
+// ---- the JSON this app writes, generated at build time (Native AOT has no reflection) ----
+record UpdateMessage(string Type, string Version, string Url, string Notes);
+record SaveItem(string Name, long Size, string GameTime, string Kept, string Note, bool Auto);
+record SavesMessage(string Type, string? Note, bool Ok, bool Test, bool CanChooseSaveFolder, string? SaveDirectory,
+    bool Found, long Size, string Newest, bool Running, List<SaveItem> Spots, List<SaveItem> Team);
+// save-info.json inside a shared zip
+record SaveInfo(string Name, string Note, string Game, string SavedAt, string MadeWith);
+
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(UpdateMessage))]
+[JsonSerializable(typeof(SavesMessage))]
+partial class VismJson : JsonSerializerContext { }
+
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true)]
+[JsonSerializable(typeof(SaveInfo))]
+partial class VismJsonIndented : JsonSerializerContext { }

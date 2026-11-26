@@ -10,11 +10,12 @@ esac
 
 if [[ $# == 0 ]]; then
     output="dist/$rid"
-    dotnet publish VISaveManager.csproj -c Release -r "$rid" --self-contained false -o "$output"
+    dotnet publish VISaveManager.csproj -c Release -r "$rid" --self-contained false -p:PublishAot=false -o "$output"
     printf 'Launch with ./%s/VISaveManager\n' "$output"
 elif [[ $# == 1 && $1 == --release ]]; then
-    output="dist/$rid-self-contained"
-    dotnet publish VISaveManager.csproj -c Release -r "$rid" --self-contained true -o "$output"
+    # Native AOT: needs clang and zlib headers (Fedora: clang zlib-devel, Debian/Ubuntu: clang zlib1g-dev)
+    output="dist/$rid-native"
+    dotnet publish VISaveManager.csproj -c Release -r "$rid" -o "$output"
     archive="dist/VISaveManager-$rid.tar.gz"
     tar -czf "$archive" -C "$output" .
     printf 'Built %s\n' "$archive"

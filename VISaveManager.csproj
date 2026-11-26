@@ -18,6 +18,22 @@
     <ApplicationIcon>vism.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
+  <!-- Release packages (dotnet publish -c Release -r <rid>):
+       Linux: Native AOT, one native executable, no .NET needed.
+       Windows: WinForms and WebView2 can't do Native AOT, so one self-contained,
+       ReadyToRun-compiled executable instead. The ui and team-saves folders sit beside it. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' != '' and '$(TargetFramework)' == 'net8.0'">
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StripSymbols>true</StripSymbols>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' != '' and '$(TargetFramework)' == 'net8.0-windows'">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <Compile Remove="LinuxHost.cs" />
