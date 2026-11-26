@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VI Save Manager</title>
+<link rel="stylesheet" href="base.css?v=1">
+<link rel="stylesheet" href="app.css?v=1">
+</head>
+<body>
+<div class="sunset" aria-hidden="true"></div>
+<main class="solo">
+  <header class="top">
+    <div class="brand"><img src="vism.png" alt="" width="40" height="40"><div><span>GTA VI</span><b>SAVE MANAGER</b></div></div>
+    <span class="grow"></span>
+    <span class="testtag" id="testTag" hidden>TEST PROFILE</span>
+    <button class="btn" id="importBtn" title="Add saves someone shared with you (.zip)">Import a save…</button>
+  </header>
+
+  <section class="mega">
+    <div class="eyebrow">Your game</div>
+    <div class="sv-now" id="svNow"><div class="skeleton"></div></div>
+    <form class="sv-add" id="svForm">
+      <input id="svName" placeholder="Name this spot, e.g. boat" maxlength="60" autocomplete="off" spellcheck="false">
+      <button class="btn primary" type="submit">Keep current save</button>
+      <button class="btn" type="button" data-sv="fresh" title="Keeps your current save as a backup, then clears the story so the next run starts a new game. Settings are kept.">Start a new game</button>
+    </form>
+    <div class="sv-note" id="svNote" role="status"></div>
+  </section>
+
+  <section class="mega">
+    <div class="race-head"><div class="eyebrow">Saved spots</div><button class="ghost small" id="openFolder">Open folder</button></div>
+    <div id="svList"><div class="skeleton"></div></div>
+  </section>
+
+  <p class="foot">Works with every VIctory-based build (they share one save folder). Loading always backs up the save it replaces. Close the game before loading.</p>
+</main>
+<script src="app.js?v=1"></script>
+</body>
+</html>

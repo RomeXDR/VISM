@@ -1,0 +1,15 @@
+html, body { overflow: auto; }
+.solo { max-width: 920px; margin: 0 auto; padding: 22px 24px 40px; display: flex; flex-direction: column; gap: 18px; }
+.top { display: flex; align-items: center; gap: 12px; }
+.top .brand { padding: 0; }
+.grow { flex: 1; }
+.testtag { font: 800 10px Inter, "Segoe UI", sans-serif; letter-spacing: .08em; color: #0D0E14; background: #FFB86B; padding: 3px 8px; border-radius: 8px; }
+.mega { padding: 22px 24px; }
+.sv-now { background: rgba(255,255,255,.03); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-top: 10px; }
+.sv-note.bad { color: #FF6B8B; }
+.sv-item .acts { display: flex; gap: 8px; flex: none; }
+.foot { color: var(--muted); font-size: 12px; text-align: center; margin: 0; }
+.skeleton { height: 16px; border-radius: 8px; background: rgba(255,255,255,.06); }
+.btn.small { height: 30px; }
+.ogroup { padding: 14px 4px 8px; }
+.sv-list + .ogroup { margin-top: 6px; }

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>VISaveManager</AssemblyName>
+    <RootNamespace>VISM</RootNamespace>
+    <ApplicationIcon>vism.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Product>VI Save Manager</Product>
+    <Version>1.0.0</Version>
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="vism.ico" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="ui\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="team-saves\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
