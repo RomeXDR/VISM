@@ -45,3 +45,21 @@ Download the Windows zip from **Releases**, extract it, and run `VISaveManager.e
 powershell -ExecutionPolicy Bypass -File build.ps1     # build and add shortcuts
 powershell -ExecutionPolicy Bypass -File release.ps1   # make the zip to share
 ```
+
+## Choosing the build target
+
+`dotnet build -c Release` defaults to the host OS. You can also target Linux or Windows explicitly with the same checkout. Cross publishing requires the matching SDK/runtime packs, which `dotnet publish` restores from NuGet:
+
+```sh
+dotnet publish VISaveManager.csproj -c Release -r linux-x64 --self-contained true -o dist/linux-x64-self-contained
+dotnet publish VISaveManager.csproj -c Release -r win-x64 --self-contained true -o dist/win-x64-self-contained
+```
+
+## Automated builds
+
+The **Build VISM** workflow compiles both platforms on pull requests into `main` and on pushes to `main`. You can also run it manually from the Actions tab. Open a successful run and download the artifact for your OS:
+
+- `VISaveManager-linux-x64` contains `VISaveManager-linux-x64.tar.gz`. Extract it to a folder and run `./VISaveManager`. GTK3 and WebKitGTK are required.
+- `VISaveManager-win-x64` contains `VISaveManager-win-x64.zip`. Extract it to a folder and run `VISaveManager.exe`. The WebView2 Runtime is required.
+
+Both archives include .NET, the application interface, and the bundled team saves.

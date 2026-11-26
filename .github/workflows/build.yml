@@ -1,0 +1,68 @@
+name: Build VISM
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+            executable: VISaveManager
+            extension: tar.gz
+          - runner: windows-2025
+            rid: win-x64
+            executable: VISaveManager.exe
+            extension: zip
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish self-contained build
+        run: dotnet publish VISaveManager.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o dist/publish
+
+      - name: Verify published files
+        shell: pwsh
+        run: |
+          $required = @('${{ matrix.executable }}', 'ui/index.html', 'ui/app.js', 'team-saves/Start/about.txt')
+          foreach ($path in $required) {
+            if (!(Test-Path -LiteralPath "dist/publish/$path" -PathType Leaf)) {
+              throw "Missing published file $path"
+            }
+          }
+
+      - name: Package Linux build
+        if: runner.os == 'Linux'
+        run: |
+          test -x dist/publish/VISaveManager
+          dist/publish/VISaveManager --help
+          tar -czf dist/VISaveManager-linux-x64.tar.gz -C dist/publish .
+
+      - name: Package Windows build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path 'dist/publish/*' -DestinationPath 'dist/VISaveManager-win-x64.zip'
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: VISaveManager-${{ matrix.rid }}
+          path: dist/VISaveManager-${{ matrix.rid }}.${{ matrix.extension }}
+          if-no-files-found: error
