@@ -59,7 +59,7 @@
       <BundleArchive>$(IntermediateOutputPath)windows-bundle.zip</BundleArchive>
     </PropertyGroup>
     <ItemGroup>
-      <VismUiFile Include="ui/**/*" />
+      <VismUiFile Include="ui/**/*" Exclude="ui/rvil.png" />
       <VismTeamSave Include="team-saves/**/*" />
       <VismNativeDll Include="$(PkgSkiaSharp_NativeAssets_Win32)/runtimes/win-x64/native/libSkiaSharp.dll;
                              $(PkgHarfBuzzSharp_NativeAssets_Win32)/runtimes/win-x64/native/libHarfBuzzSharp.dll;
