@@ -37,7 +37,8 @@
     <Compile Remove="LinuxHost.cs" />
     <PackageReference Include="Majorsilence.Forms.Avalonia" Version="26.11.19" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" GeneratePathProperty="true" />
-    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.3" GeneratePathProperty="true" />
+    <PackageReference Include="SkiaSharp.HarfBuzz" Version="3.119.4" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.5" GeneratePathProperty="true" />
     <None Include="$(PkgSkiaSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgSkiaSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt"
           Link="THIRD-PARTY/SkiaSharp-%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
     <None Include="$(PkgHarfBuzzSharp_NativeAssets_Win32)/LICENSE.txt;$(PkgHarfBuzzSharp_NativeAssets_Win32)/THIRD-PARTY-NOTICES.txt"
