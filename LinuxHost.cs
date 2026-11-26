@@ -63,7 +63,7 @@ sealed class LinuxHost(bool test, string? saveDirectory) : IDesktopHost
         return 0;
     }
 
-    void Connect(IntPtr instance, string signal, Delegate handler)
+    void Connect<TDelegate>(IntPtr instance, string signal, TDelegate handler) where TDelegate : Delegate
     {
         signalHandlers.Add(handler);
         g_signal_connect_data(instance, signal, Marshal.GetFunctionPointerForDelegate(handler), IntPtr.Zero, IntPtr.Zero, 0);

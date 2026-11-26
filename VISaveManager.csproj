@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework Condition="$(RuntimeIdentifier.StartsWith('win-')) or ('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows')))">net8.0-windows</TargetFramework>
+    <VismWindows Condition="$(RuntimeIdentifier.StartsWith('win-')) or ('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows')))">true</VismWindows>
+    <PublishAot Condition="'$(PublishAot)' == '' and '$(Configuration)' == 'Release' and
+      (('$(RuntimeIdentifier)' == 'win-x64' and $([MSBuild]::IsOSPlatform('Windows'))) or
+       ($(RuntimeIdentifier.StartsWith('linux-')) and $([MSBuild]::IsOSPlatform('Linux'))))">true</PublishAot>
+    <TargetFramework Condition="'$(PublishAot)' == 'true'">net10.0</TargetFramework>
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(VismWindows)' == 'true'">net8.0-windows</TargetFramework>
     <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
@@ -18,25 +23,22 @@
     <ApplicationIcon>vism.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
-  <!-- Release packages (dotnet publish -c Release -r <rid>):
-       Linux: Native AOT, one native executable, no .NET needed.
-       Windows: WinForms and WebView2 can't do Native AOT, so one self-contained,
-       ReadyToRun-compiled executable instead. The ui and team-saves folders sit beside it. -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' != '' and '$(TargetFramework)' == 'net8.0'">
-    <PublishAot>true</PublishAot>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <StripSymbols>true</StripSymbols>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(RuntimeIdentifier)' != '' and '$(TargetFramework)' == 'net8.0-windows'">
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
-    <PublishReadyToRun>true</PublishReadyToRun>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-  </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <Compile Remove="LinuxHost.cs" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
+    <DefineConstants>$(DefineConstants);VISM_NATIVE_WINDOWS</DefineConstants>
+    <OutputType>WinExe</OutputType>
+    <ApplicationIcon>vism.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
+    <Compile Remove="LinuxHost.cs" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" GeneratePathProperty="true" ExcludeAssets="all" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(VismWindows)' != 'true' or '$(PublishAot)' != 'true'">
+    <Compile Remove="NativeWindowsHost.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' != 'net8.0-windows'">
     <Compile Remove="WindowsHost.cs" />
@@ -44,4 +46,16 @@
   <ItemGroup>
     <None Update="vism.ico;ui/**/*;team-saves/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="BuildNativeWindowsHost" AfterTargets="ComputeFilesToPublish"
+          Condition="'$(VismWindows)' == 'true' and '$(PublishAot)' == 'true'">
+    <Error Condition="'$(RuntimeIdentifier)' != 'win-x64'" Text="The VISM NativeAOT Windows host supports win-x64." />
+    <PropertyGroup>
+      <VismHostOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'vism-host'))</VismHostOutput>
+    </PropertyGroup>
+    <Exec Command="&quot;$(MSBuildProjectDirectory)\native\build-windows.cmd&quot; &quot;$(PkgMicrosoft_Web_WebView2)&quot; &quot;$(VismHostOutput)&quot;" />
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(VismHostOutput)/VISM.WindowsHost.dll;$(VismHostOutput)/WebView2Loader.dll"
+                             RelativePath="%(Filename)%(Extension)" CopyToPublishDirectory="Always" />
+    </ItemGroup>
+  </Target>
 </Project>
