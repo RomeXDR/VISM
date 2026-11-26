@@ -67,6 +67,38 @@ sealed class MainForm : Form
         core.Navigate("https://app.vism/index.html");
     }
 
+    // ---- updates: the only thing this app asks the internet. One anonymous request to GitHub's
+    //      public API for the newest release of this repo; nothing about the user is sent. ----
+    const string Repo = "RomeXDR/VISM";
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
+    async Task CheckUpdateAsync()
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/releases/latest");
+            req.Headers.UserAgent.ParseAdd("VISaveManager");
+            req.Headers.Accept.ParseAdd("application/vnd.github+json");
+            using var res = await Http.SendAsync(req);
+            if (!res.IsSuccessStatusCode) return;   // no release yet, offline, or a private repo
+            var j = JsonNode.Parse(await res.Content.ReadAsStringAsync());
+            var tag = ((string?)j?["tag_name"] ?? "").TrimStart('v', 'V');
+            if (!Version.TryParse(tag, out var latest)) return;
+            var mine = typeof(MainForm).Assembly.GetName().Version ?? new Version(0, 0);
+            if (latest <= new Version(mine.Major, mine.Minor, Math.Max(0, mine.Build))) return;
+            var url = (string?)j?["html_url"] ?? $"https://github.com/{Repo}/releases/latest";
+            var notes = ((string?)j?["body"] ?? "").Trim();
+            if (notes.Length > 400) notes = notes[..400] + "…";
+            Send(new { type = "update", version = latest.ToString(), url, notes });
+        }
+        catch { }
+    }
+    // only this repo's pages open, in the browser
+    static void OpenRelease(string? url)
+    {
+        if (url == null || !url.StartsWith($"https://github.com/{Repo}/", StringComparison.OrdinalIgnoreCase)) return;
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+    }
+
     void Send(object o)
     {
         var json = JsonSerializer.Serialize(o, Json);
@@ -83,6 +115,8 @@ sealed class MainForm : Form
         switch ((string?)m["cmd"])
         {
             case "list": SendSaves(); break;
+            case "checkUpdate": _ = CheckUpdateAsync(); break;
+            case "openRelease": OpenRelease((string?)m["url"]); break;
             case "snap": SaveSnap(name); break;
             case "load": SaveLoad(name, (string?)m["kind"] == "team"); break;
             case "delete": SaveDelete(name); break;

@@ -6,6 +6,8 @@ A small Windows app to keep, load and share GTA VI saves for the VIctory-based b
 
 ## Download
 
+The app tells you when a new version is out.
+
 Get the zip from **Releases**, unzip it anywhere and run `VISaveManager.exe`.
 Nothing to install. If Windows says "Windows protected your PC", click **More info → Run anyway**.
 
@@ -25,7 +27,10 @@ Close the game before loading a save.
 - Works with every VIctory-based build: they all use the same save folder,
   `%LOCALAPPDATA%\victory\data\7952987A\saves`.
 - Your kept saves and backups are in `%LOCALAPPDATA%\VISaveManager\saves`.
-- It only copies save folders. It has no network code, and it contains no game files.
+- It only copies save folders, and it contains no game files.
+- Its only internet use: at start (and every 6 hours) it asks GitHub whether a newer release of
+  this app exists, and shows a banner with a Download button if so. Nothing about you or your
+  saves is sent.
 
 ## Build it yourself
 

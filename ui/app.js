@@ -59,7 +59,22 @@ $('#svForm').addEventListener('submit', (e) => {
   send({ cmd: 'snap', name: n });
   $('#svName').value = '';
 });
-window.chrome.webview.addEventListener('message', (e) => { if (e.data && e.data.type === 'saves') render(e.data); });
+// a newer release on GitHub: a banner with a Download button (Later hides it until the next version)
+function showUpdate(u) {
+  try { if (localStorage.getItem('skip') === u.version) return; } catch { }
+  $('#upTitle').textContent = `Version ${u.version} is out`;
+  $('#upNotes').textContent = u.notes ? u.notes.split('\n')[0] : 'Download it, unzip it over the old folder or anywhere new.';
+  $('#upGet').onclick = () => send({ cmd: 'openRelease', url: u.url });
+  $('#upLater').onclick = () => { try { localStorage.setItem('skip', u.version); } catch { } $('#update').hidden = true; };
+  $('#update').hidden = false;
+}
+window.chrome.webview.addEventListener('message', (e) => {
+  if (!e.data) return;
+  if (e.data.type === 'saves') render(e.data);
+  if (e.data.type === 'update') showUpdate(e.data);
+});
+send({ cmd: 'checkUpdate' });
+setInterval(() => send({ cmd: 'checkUpdate' }), 6 * 3600 * 1000);
 // the game may start or stop, or autosave, while the window is open
 setInterval(() => { if (!document.hidden) send({ cmd: 'list' }); }, 5000);
 send({ cmd: 'list' });

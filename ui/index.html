@@ -4,11 +4,17 @@
 <meta charset="utf-8">
 <title>VI Save Manager</title>
 <link rel="stylesheet" href="base.css?v=1">
-<link rel="stylesheet" href="app.css?v=1">
+<link rel="stylesheet" href="app.css?v=2">
 </head>
 <body>
 <div class="sunset" aria-hidden="true"></div>
 <main class="solo">
+  <div class="update" id="update" hidden role="status">
+    <div><b id="upTitle">A new version is out</b><span id="upNotes"></span></div>
+    <span class="grow"></span>
+    <button class="btn primary small" id="upGet">Download</button>
+    <button class="ghost small" id="upLater" aria-label="Hide until the next version">Later</button>
+  </div>
   <header class="top">
     <div class="brand"><img src="vism.png" alt="" width="40" height="40"><div><span>GTA VI</span><b>SAVE MANAGER</b></div></div>
     <span class="grow"></span>
@@ -34,6 +40,6 @@
 
   <p class="foot">Works with every VIctory-based build (they share one save folder). Loading always backs up the save it replaces. Close the game before loading.</p>
 </main>
-<script src="app.js?v=1"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
