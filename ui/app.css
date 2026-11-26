@@ -21,3 +21,4 @@ html, body { overflow: auto; }
 .update > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .update span { color: var(--soft); font-size: 12px; }
 @keyframes upIn { from { opacity: 0; transform: translateY(-6px); } }
+.save-path { overflow-wrap: anywhere; }
